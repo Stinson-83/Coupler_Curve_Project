@@ -1,0 +1,199 @@
+<!-- python3 -m http.server 8080 -->
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Four-Bar Mechanism — Coupler Curve Synthesis</title>
+  <meta name="description" content="Interactive 4-point and 5-point coupler curve synthesis of a planar four-bar linkage mechanism. Theory of Machines project." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- ══════════════════════════════════════════
+         HEADER
+         ══════════════════════════════════════════ -->
+    <header class="app-header">
+      <div class="app-title">
+        <h1>Four-Bar Mechanism Synthesis</h1>
+        <span class="subtitle">Coupler Curve — ME252 Project</span>
+      </div>
+      <div class="header-right">
+        <span id="coordTooltip">(0.0, 0.0)</span>
+        <span class="header-badge">
+          <span class="status-dot"></span>
+          Interactive
+        </span>
+      </div>
+    </header>
+
+    <!-- ══════════════════════════════════════════
+         SIDEBAR — Input & Info
+         ══════════════════════════════════════════ -->
+    <aside class="sidebar">
+
+      <!-- Mode Selection -->
+      <div class="panel-section">
+        <div class="panel-section-title">Synthesis Mode</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="mode4">4-Point</button>
+          <button class="mode-btn" id="mode5">5-Point</button>
+        </div>
+        <div id="modeLabel">4-Point Synthesis</div>
+      </div>
+
+      <!-- Precision Points -->
+      <div class="panel-section">
+        <div class="points-header">
+          <div class="panel-section-title" style="margin-bottom:0">Precision Points</div>
+          <span id="pointCount">0 / 4</span>
+        </div>
+        <div id="pointsList"></div>
+      </div>
+
+      <!-- Manual Input -->
+      <div class="panel-section">
+        <div class="panel-section-title">Manual Coordinates</div>
+        <div id="manualInputs"></div>
+        <div class="btn-group">
+          <button class="btn" id="applyManual">Apply</button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="panel-section">
+        <div class="btn-group">
+          <button class="btn btn-primary" id="synthesizeBtn">
+            <span class="icon">⚙</span> Synthesize
+          </button>
+          <button class="btn btn-danger" id="clearBtn">
+            <span class="icon">✕</span> Clear
+          </button>
+        </div>
+        <div id="errorDisplay"></div>
+      </div>
+
+      <!-- Display Toggles -->
+      <div class="panel-section">
+        <div class="panel-section-title">Display Options</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Coupler Curve</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleCurve" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Precision Points</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="togglePoints" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:#4fc3f7"></span> Crank</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ff7043"></span> Coupler</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#66bb6a"></span> Rocker</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ab47bc"></span> Curve</div>
+        </div>
+      </div>
+
+      <!-- Mechanism Info Panel -->
+      <div class="panel-section" id="infoPanel">
+        <div class="panel-section-title">Mechanism Parameters</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="label">Crank (a)</span>
+            <span class="value" id="linkA">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Coupler (b)</span>
+            <span class="value" id="linkB">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Rocker (c)</span>
+            <span class="value" id="linkC">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Ground (d)</span>
+            <span class="value" id="linkD">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Offset p</span>
+            <span class="value" id="couplerP">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Offset q</span>
+            <span class="value" id="couplerQ">—</span>
+          </div>
+          <div class="info-item full-width">
+            <span class="label">Grashof Classification</span>
+            <span class="value" id="grashofType">—</span>
+          </div>
+          <div class="info-item full-width" id="residualRow">
+            <span class="label">Residual Error</span>
+            <span class="value" id="residualError">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Ground A₀</span>
+            <span class="value" id="groundA0">—</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Ground B₀</span>
+            <span class="value" id="groundB0">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Import / Export -->
+      <div class="panel-section">
+        <div class="panel-section-title">File I/O</div>
+        <div class="file-actions">
+          <button class="btn" id="exportBtn"><span class="icon">↓</span> Export JSON</button>
+          <button class="btn" id="importBtn"><span class="icon">↑</span> Import JSON</button>
+          <input type="file" id="importFile" accept=".json" />
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ══════════════════════════════════════════
+         CANVAS AREA
+         ══════════════════════════════════════════ -->
+    <div class="canvas-area">
+      <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         BOTTOM BAR — Animation Controls
+         ══════════════════════════════════════════ -->
+    <div class="bottom-bar">
+      <div class="anim-controls">
+        <button class="btn-anim" id="playBtn"><span class="icon">▶</span> Play</button>
+        <button class="btn-anim" id="resetBtn"><span class="icon">↺</span> Reset</button>
+      </div>
+
+      <div class="speed-control">
+        <label for="speedSlider">Speed</label>
+        <input type="range" id="speedSlider" min="0.002" max="0.1" step="0.002" value="0.02" />
+        <span id="speedValue">1.0×</span>
+      </div>
+
+      <div class="status-area">
+        <span class="status-dot"></span>
+        <span id="statusText">Ready</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts (order matters: kinematics → animation → ui) -->
+  <script src="js/kinematics.js"></script>
+  <script src="js/animation.js"></script>
+  <script src="js/ui.js"></script>
+
+</body>
+</html>
