@@ -29,6 +29,7 @@ const UI = (() => {
     let isPanning = false;
     let lastPanX = 0;
     let lastPanY = 0;
+    let dragSynthTimer = null;
 
     // ─────────────────────────────────────────────
     // DOM REFERENCES
@@ -175,6 +176,11 @@ const UI = (() => {
             updateManualInputFields();
             updatePointsList();
             Animation.setPrecisionPoints([...points]);
+            // Live re-synthesis while dragging (debounced)
+            if (points.length === mode) {
+                clearTimeout(dragSynthTimer);
+                dragSynthTimer = setTimeout(() => runSynthesis(), 100);
+            }
             return;
         }
 
@@ -204,6 +210,7 @@ const UI = (() => {
         if (isDragging) {
             isDragging = false;
             draggingIndex = -1;
+            clearTimeout(dragSynthTimer);
             canvas.style.cursor = points.length < mode ? "crosshair" : "default";
         }
     }
@@ -241,12 +248,18 @@ const UI = (() => {
             updateManualInputFields();
             updatePointsList();
             Animation.setPrecisionPoints([...points]);
+            // Live re-synthesis while dragging (debounced)
+            if (points.length === mode) {
+                clearTimeout(dragSynthTimer);
+                dragSynthTimer = setTimeout(() => runSynthesis(), 100);
+            }
         }
     }
 
     function onTouchEnd() {
         isDragging = false;
         draggingIndex = -1;
+        clearTimeout(dragSynthTimer);
     }
 
     // ─────────────────────────────────────────────
