@@ -537,17 +537,3 @@ me252_project/
 - **Gaussian Elimination** — With partial pivoting for linear system solving
 
 ---
-
-## References
-
-1. Freudenstein, F. (1954). *An Analytical Approach to the Design of Four-Link Mechanisms.* ASME Journal of Engineering for Industry.
-2. Sandor, G. N., & Erdman, A. G. (1984). *Advanced Mechanism Design: Analysis and Synthesis, Vol. 2.* Prentice-Hall.
-3. Norton, R. L. (2011). *Design of Machinery.* McGraw-Hill.
-4. Levenberg, K. (1944). *A Method for the Solution of Certain Non-Linear Problems in Least Squares.* Quarterly of Applied Mathematics.
-5. Marquardt, D. W. (1963). *An Algorithm for Least-Squares Estimation of Nonlinear Parameters.* SIAM Journal on Applied Mathematics.
-
----
-
-<p align="center">
-  <em>Built for ME252 — Theory of Machines</em>
-</p>
