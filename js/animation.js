@@ -694,21 +694,23 @@ const Animation = (() => {
         // Generate full coupler curve
         couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
 
-        // Determine best assembly branch
-        const range1 = Kinematics.findValidRange(mech, 1);
-        const range2 = Kinematics.findValidRange(mech, -1);
+        // Determine best assembly branch (skip during interactive dragging to prevent flips)
+        if (!keepView) {
+            const range1 = Kinematics.findValidRange(mech, 1);
+            const range2 = Kinematics.findValidRange(mech, -1);
 
-        if (range1.isFullRotation) {
-            branch = 1;
-        } else if (range2.isFullRotation) {
-            branch = -1;
-            couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
-        } else {
-            // Pick branch with larger valid range
-            const totalRange = (ranges) =>
-                ranges.validRanges.reduce((s, r) => s + (r[1] - r[0]), 0);
-            branch = totalRange(range1) >= totalRange(range2) ? 1 : -1;
-            couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
+            if (range1.isFullRotation) {
+                branch = 1;
+            } else if (range2.isFullRotation) {
+                branch = -1;
+                couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
+            } else {
+                // Pick branch with larger valid range
+                const totalRange = (ranges) =>
+                    ranges.validRanges.reduce((s, r) => s + (r[1] - r[0]), 0);
+                branch = totalRange(range1) >= totalRange(range2) ? 1 : -1;
+                couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
+            }
         }
 
         if (!keepView) {

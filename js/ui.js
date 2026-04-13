@@ -276,25 +276,15 @@ const UI = (() => {
             circle.radius = Math.max(newRadius, 0.01);
         }
 
-        // Update visual immediately
-        Animation.setConstruction({ ...constructionState });
-
-        // RAF-gated re-optimization (max ~60fps)
-        if (!circleUpdatePending) {
-            circleUpdatePending = true;
-            requestAnimationFrame(() => {
-                circleUpdatePending = false;
-                performCircleUpdate();
-            });
-        }
+        // Run re-optimization synchronously for continuous curve updates
+        performCircleUpdate();
     }
 
     function performCircleUpdate() {
         if (!constructionState || points.length < 4) return;
 
-        const seedMech = currentResult ? currentResult.mechanism : null;
         const updated = Kinematics.updateMechanismFromCircles(
-            points, constructionState, seedMech
+            points, constructionState, currentResult
         );
 
         if (updated && updated.success) {

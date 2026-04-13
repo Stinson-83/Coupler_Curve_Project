@@ -913,9 +913,13 @@ const Kinematics = (() => {
    * @param {Object} seedMech     - Previous mechanism (warm-start seed)
    * @returns {Object} { success, mechanism, construction, grashof, residual }
    */
-  function updateMechanismFromCircles(points, construction, seedMech) {
+  function updateMechanismFromCircles(points, construction, seedResult) {
     const n = points.length;
     if (n < 4 || n > 5) return { success: false, error: "Need 4 or 5 points." };
+
+    // Extract seed mechanism and crank angles from previous result
+    const seedMech = seedResult ? seedResult.mechanism : null;
+    const seedAngles = seedResult ? seedResult.crank_angles : null;
 
     // Fixed from circles
     const A0 = [...construction.hr.center];
@@ -931,11 +935,17 @@ const Kinematics = (() => {
     const p_seed = seedMech ? seedMech.p : b_seed * 0.5;
     const q_seed = seedMech ? seedMech.q : _a * 0.3;
 
-    // Estimate initial crank angles from point positions relative to A0
-    const theta_seeds = points.map((pt) => {
-      const ang = Math.atan2(pt[1] - A0[1], pt[0] - A0[0]);
-      return (ang + TWO_PI) % TWO_PI;
-    });
+    // Warm-start crank angles: use previous converged angles if available,
+    // otherwise estimate from point positions relative to A0
+    let theta_seeds;
+    if (seedAngles && seedAngles.length === n) {
+      theta_seeds = [...seedAngles];
+    } else {
+      theta_seeds = points.map((pt) => {
+        const ang = Math.atan2(pt[1] - A0[1], pt[0] - A0[0]);
+        return (ang + TWO_PI) % TWO_PI;
+      });
+    }
 
     // x0 = [b, p, q, θ₂₁, θ₂₂, …]
     let x0 = [b_seed, p_seed, q_seed, ...theta_seeds];
