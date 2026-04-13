@@ -28,6 +28,8 @@ const Animation = (() => {
     let precisionPoints = [];
     let showCurve = true;
     let showPoints = true;
+    let construction = null;  // { hr: {center, radius}, hc: {center, radius} }
+    let showCircles = true;
 
     // View transform
     let viewScale = 1;
@@ -61,11 +63,17 @@ const Animation = (() => {
         groundPivot: "#78909c",
         text: "#b0bec5",
         trace: "rgba(171, 71, 188, 0.6)",
+        hrCircle: "#00e5ff",
+        hrCircleGlow: "rgba(0, 229, 255, 0.15)",
+        hcCircle: "#ff9100",
+        hcCircleGlow: "rgba(255, 145, 0, 0.15)",
+        circleHandle: "#ffffff",
     };
 
     const LINK_WIDTH = 3.5;
     const JOINT_RADIUS = 6;
     const COUPLER_PT_RADIUS = 8;
+    const CIRCLE_HANDLE_RADIUS = 7;
     const PRECISION_PT_RADIUS = 7;
 
     // ─────────────────────────────────────────────
@@ -394,6 +402,114 @@ const Animation = (() => {
     }
 
     // ─────────────────────────────────────────────
+    // CONSTRUCTION CIRCLES (hr / hc)
+    // ─────────────────────────────────────────────
+
+    function drawConstructionCircle(circle, color, glowColor, label) {
+        if (!circle) return;
+        const center = worldToScreen(circle.center);
+        const actualScale = viewScale * zoomFactor;
+        const screenRadius = circle.radius * actualScale;
+
+        if (screenRadius < 2) return;
+
+        // Glow fill
+        ctx.beginPath();
+        ctx.arc(center[0], center[1], screenRadius, 0, Math.PI * 2);
+        ctx.fillStyle = glowColor;
+        ctx.fill();
+
+        // Dashed circumference
+        ctx.setLineDash([8, 5]);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(center[0], center[1], screenRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Center handle (drag target)
+        ctx.beginPath();
+        ctx.arc(center[0], center[1], CIRCLE_HANDLE_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = COLORS.circleHandle;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Radius handle (small dot on the right of circumference)
+        const handleX = center[0] + screenRadius;
+        const handleY = center[1];
+        ctx.beginPath();
+        ctx.arc(handleX, handleY, CIRCLE_HANDLE_RADIUS - 1, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.7;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = COLORS.circleHandle;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = color;
+        ctx.font = "bold 11px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(label, center[0], center[1] - CIRCLE_HANDLE_RADIUS - 4);
+    }
+
+    function drawConstructionCircles() {
+        if (!construction || !showCircles) return;
+        drawConstructionCircle(construction.hr, COLORS.hrCircle, COLORS.hrCircleGlow, "hr");
+        drawConstructionCircle(construction.hc, COLORS.hcCircle, COLORS.hcCircleGlow, "hc");
+    }
+
+    /**
+     * Hit-test construction circle handles.
+     * @returns {string|null} 'hr_center'|'hr_radius'|'hc_center'|'hc_radius' or null
+     */
+    function findCircleHandle(sx, sy, threshold) {
+        if (!construction || !showCircles) return null;
+        threshold = threshold || 18;
+        const actualScale = viewScale * zoomFactor;
+
+        const circles = [
+            { key: 'hr', circle: construction.hr },
+            { key: 'hc', circle: construction.hc },
+        ];
+
+        for (const { key, circle } of circles) {
+            const center = worldToScreen(circle.center);
+            const screenRadius = circle.radius * actualScale;
+
+            // Check center handle
+            const dcx = sx - center[0];
+            const dcy = sy - center[1];
+            if (Math.sqrt(dcx * dcx + dcy * dcy) < threshold) {
+                return key + '_center';
+            }
+
+            // Check radius handle (right side of circumference)
+            const rhx = center[0] + screenRadius;
+            const rhy = center[1];
+            const drx = sx - rhx;
+            const dry = sy - rhy;
+            if (Math.sqrt(drx * drx + dry * dry) < threshold) {
+                return key + '_radius';
+            }
+
+            // Check anywhere on the circumference ring (for easier grabbing)
+            const distFromCenter = Math.sqrt(dcx * dcx + dcy * dcy);
+            if (Math.abs(distFromCenter - screenRadius) < threshold * 0.6) {
+                return key + '_radius';
+            }
+        }
+        return null;
+    }
+
+    // ─────────────────────────────────────────────
     // GROUND LINK
     // ─────────────────────────────────────────────
     function drawGroundLink() {
@@ -476,6 +592,9 @@ const Animation = (() => {
             }
             return;
         }
+
+        // Construction circles (behind mechanism)
+        drawConstructionCircles();
 
         // Coupler curve
         if (showCurve) {
@@ -562,12 +681,15 @@ const Animation = (() => {
     // ─────────────────────────────────────────────
     // MECHANISM & POINTS SETTERS
     // ─────────────────────────────────────────────
-    function setMechanism(mech) {
+    function setMechanism(mech, keepView) {
         mechanism = mech;
         tracePoints = [];
-        zoomFactor = 1.0;
-        panX = 0;
-        panY = 0;
+
+        if (!keepView) {
+            zoomFactor = 1.0;
+            panX = 0;
+            panY = 0;
+        }
 
         // Generate full coupler curve
         couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
@@ -589,8 +711,20 @@ const Animation = (() => {
             couplerCurve = Kinematics.generateCouplerCurve(mech, branch, 720);
         }
 
-        computeViewTransform();
+        if (!keepView) {
+            computeViewTransform();
+        }
         theta2 = 0;
+        drawFrame();
+    }
+
+    function setConstruction(c) {
+        construction = c;
+        drawFrame();
+    }
+
+    function setShowCircles(v) {
+        showCircles = v;
         drawFrame();
     }
 
@@ -615,6 +749,7 @@ const Animation = (() => {
     function clear() {
         pause();
         mechanism = null;
+        construction = null;
         couplerCurve = [];
         tracePoints = [];
         precisionPoints = [];
@@ -679,6 +814,8 @@ const Animation = (() => {
         reset,
         setSpeed,
         setMechanism,
+        setConstruction,
+        setShowCircles,
         setPrecisionPoints,
         setShowCurve,
         setShowPoints,
@@ -689,10 +826,12 @@ const Animation = (() => {
         applyPan,
         screenToWorld,
         worldToScreen,
+        findCircleHandle,
         computeViewTransform,
         get isPlaying() { return isPlaying; },
         get currentAngle() { return theta2; },
         get mechanism() { return mechanism; },
+        get construction() { return construction; },
         get precisionPoints() { return precisionPoints; },
     };
 })();

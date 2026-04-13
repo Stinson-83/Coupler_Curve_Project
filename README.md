@@ -8,6 +8,31 @@
 
 ---
 
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Interactive Synthesis Exploration** | Real-time constrained re-optimization using controllable handles (`hr`, `hc`) for ground pivots and link lengths |
+| **4-Point Synthesis** | Exact interpolation — coupler curve passes through all 4 points |
+| **5-Point Synthesis** | Least-squares best-fit through 5 precision points |
+| **Interactive Canvas** | Click-to-place, drag-to-adjust precision points |
+| **Manual Coordinates** | Enter exact point coordinates via input fields |
+| **Real-Time Animation** | Watch the mechanism move with adjustable speed |
+| **Coupler Curve Trace** | Full coupler curve rendered with glow effect |
+| **Live Trace** | Trail left by the coupler point during animation |
+| **Grashof Classification** | Automatic mechanism type identification |
+| **Mechanism Parameters** | Display of all link lengths, offsets, and ground pivots |
+| **Zoom & Pan** | Scroll-wheel zoom, middle/right-click pan |
+| **Touch Support** | Mobile-friendly touch handling |
+| **Export/Import JSON** | Save and load mechanism designs |
+| **Adaptive Grid** | Grid spacing adjusts automatically with zoom level |
+| **Dark Engineering Theme** | Professional dark UI optimized for technical visualization |
+| **Responsive Layout** | Adapts to different screen sizes (breakpoint at 768px) |
+| **HiDPI Support** | Crisp rendering on Retina/HiDPI displays |
+| **Angle HUD** | Real-time display of θ₂, θ₃, θ₄ angles |
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -31,7 +56,6 @@
   - [Module Breakdown](#module-breakdown)
   - [Data Flow](#data-flow)
 - [File Structure](#file-structure)
-- [Features](#features)
 - [Technologies Used](#technologies-used)
 
 ---
@@ -501,29 +525,7 @@ me252_project/
 └── README.md           # This file
 ```
 
----
 
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **4-Point Synthesis** | Exact interpolation — coupler curve passes through all 4 points |
-| **5-Point Synthesis** | Least-squares best-fit through 5 precision points |
-| **Interactive Canvas** | Click-to-place, drag-to-adjust precision points |
-| **Manual Coordinates** | Enter exact point coordinates via input fields |
-| **Real-Time Animation** | Watch the mechanism move with adjustable speed |
-| **Coupler Curve Trace** | Full coupler curve rendered with glow effect |
-| **Live Trace** | Trail left by the coupler point during animation |
-| **Grashof Classification** | Automatic mechanism type identification |
-| **Mechanism Parameters** | Display of all link lengths, offsets, and ground pivots |
-| **Zoom & Pan** | Scroll-wheel zoom, middle/right-click pan |
-| **Touch Support** | Mobile-friendly touch handling |
-| **Export/Import JSON** | Save and load mechanism designs |
-| **Adaptive Grid** | Grid spacing adjusts automatically with zoom level |
-| **Dark Engineering Theme** | Professional dark UI optimized for technical visualization |
-| **Responsive Layout** | Adapts to different screen sizes (breakpoint at 768px) |
-| **HiDPI Support** | Crisp rendering on Retina/HiDPI displays |
-| **Angle HUD** | Real-time display of θ₂, θ₃, θ₄ angles |
 
 ---
 

@@ -880,6 +880,159 @@ const Kinematics = (() => {
   }
 
   // ─────────────────────────────────────────────
+  // CONSTRUCTION CIRCLES (hr / hc)
+  // ─────────────────────────────────────────────
+  /**
+   * Derive the two construction circles from a synthesized mechanism.
+   *
+   *   hr — crank locus circle: center = A₀, radius = crank length a
+   *   hc — rocker locus circle: center = B₀, radius = rocker length c
+   *
+   * These are geometrically meaningful: the crank tip traces hr,
+   * and the rocker tip traces hc.
+   *
+   * @param {Object} mechanism - { a, b, c, d, p, q, A0, B0 }
+   * @returns {Object} { hr: {center, radius}, hc: {center, radius} }
+   */
+  function computeConstruction(mechanism) {
+    return {
+      hr: { center: [...mechanism.A0], radius: mechanism.a },
+      hc: { center: [...mechanism.B0], radius: mechanism.c },
+    };
+  }
+
+  /**
+   * Re-synthesize a mechanism with A₀, a, B₀, c fixed by the circles.
+   *
+   * Only the free parameters [b, p, q, θ₂₁ … θ₂ₙ] are optimised so
+   * that the coupler curve still passes (approximately) through the
+   * given precision points.
+   *
+   * @param {Array}  points       - Precision points [[x,y], …]
+   * @param {Object} construction - { hr: {center,radius}, hc: {center,radius} }
+   * @param {Object} seedMech     - Previous mechanism (warm-start seed)
+   * @returns {Object} { success, mechanism, construction, grashof, residual }
+   */
+  function updateMechanismFromCircles(points, construction, seedMech) {
+    const n = points.length;
+    if (n < 4 || n > 5) return { success: false, error: "Need 4 or 5 points." };
+
+    // Fixed from circles
+    const A0 = [...construction.hr.center];
+    const B0 = [...construction.hc.center];
+    const _a = Math.max(construction.hr.radius, EPS);
+    const _c = Math.max(construction.hc.radius, EPS);
+    const _d = vec.dist(A0, B0);
+
+    if (_d < EPS) return { success: false, error: "A₀ and B₀ coincide." };
+
+    // Seed free parameters from previous mechanism
+    const b_seed = seedMech ? seedMech.b : _a * 1.2;
+    const p_seed = seedMech ? seedMech.p : b_seed * 0.5;
+    const q_seed = seedMech ? seedMech.q : _a * 0.3;
+
+    // Estimate initial crank angles from point positions relative to A0
+    const theta_seeds = points.map((pt) => {
+      const ang = Math.atan2(pt[1] - A0[1], pt[0] - A0[0]);
+      return (ang + TWO_PI) % TWO_PI;
+    });
+
+    // x0 = [b, p, q, θ₂₁, θ₂₂, …]
+    let x0 = [b_seed, p_seed, q_seed, ...theta_seeds];
+
+    // Residual: coupler point error for each precision point
+    function residuals(x) {
+      const _b = Math.abs(x[0]);
+      const _p = x[1];
+      const _q = x[2];
+
+      if (_b < EPS) return new Array(n * 2).fill(1e6);
+
+      const mech = { a: _a, b: _b, c: _c, d: _d, p: _p, q: _q, A0, B0 };
+      const r = [];
+
+      for (let i = 0; i < n; i++) {
+        const theta2 = x[3 + i];
+        const fk = forwardKinematics(mech, theta2, 1);
+
+        if (!fk) {
+          r.push(1e4, 1e4);
+        } else {
+          r.push(fk.P[0] - points[i][0], fk.P[1] - points[i][1]);
+        }
+      }
+      return r;
+    }
+
+    function pointMatchingError(x) {
+      const r = residuals(x);
+      let sumSq = 0;
+      for (let i = 0; i < r.length; i++) sumSq += r[i] * r[i];
+      return Math.sqrt(sumSq);
+    }
+
+    // Run LM with reduced iterations (fast for interactive use)
+    let bestResult = levenbergMarquardt(residuals, x0, {
+      maxIter: 150,
+      tol: 1e-10,
+      lambda: 1e-2,
+    });
+    let bestError = pointMatchingError(bestResult.x);
+
+    // If warm-start was poor, try a few random restarts (still fast)
+    if (bestError > 0.5) {
+      for (let trial = 0; trial < 8; trial++) {
+        const b_try = b_seed * (0.5 + Math.random() * 2.0);
+        const p_try = p_seed * (0.3 + Math.random() * 2.0);
+        const q_try = q_seed * (0.3 + Math.random() * 2.0);
+        const t_try = theta_seeds.map(t => t + (Math.random() - 0.5) * 0.5);
+
+        const x_try = [b_try, p_try, q_try, ...t_try];
+        const r_try = levenbergMarquardt(residuals, x_try, {
+          maxIter: 100,
+          tol: 1e-10,
+          lambda: 1e-2,
+        });
+        const err = pointMatchingError(r_try.x);
+        if (err < bestError) {
+          bestError = err;
+          bestResult = r_try;
+        }
+        if (bestError < 1e-4) break;
+      }
+    }
+
+    // Build result mechanism
+    const xf = bestResult.x;
+    const final_b = Math.abs(xf[0]);
+    const final_p = xf[1];
+    const final_q = xf[2];
+
+    const mechanism = {
+      a: _a,
+      b: final_b,
+      c: _c,
+      d: _d,
+      p: final_p,
+      q: final_q,
+      A0,
+      B0,
+    };
+
+    const newConstruction = computeConstruction(mechanism);
+    const grashof = checkGrashof(_a, final_b, _c, _d);
+
+    return {
+      success: true,
+      mechanism,
+      construction: newConstruction,
+      grashof,
+      residual: bestError,
+      crank_angles: Array.from({ length: n }, (_, i) => xf[3 + i]),
+    };
+  }
+
+  // ─────────────────────────────────────────────
   // PUBLIC API
   // ─────────────────────────────────────────────
   return {
@@ -889,6 +1042,8 @@ const Kinematics = (() => {
     generateCouplerCurve,
     synthesize4Point,
     synthesize5Point,
+    computeConstruction,
+    updateMechanismFromCircles,
     vec,
     DEG,
     TWO_PI,

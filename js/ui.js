@@ -31,6 +31,11 @@ const UI = (() => {
     let lastPanY = 0;
     let dragSynthTimer = null;
 
+    // Circle interaction state
+    let circleDragTarget = null;   // 'hr_center' | 'hr_radius' | 'hc_center' | 'hc_radius'
+    let constructionState = null;  // current { hr, hc }
+    let circleUpdatePending = false; // RAF gate
+
     // ─────────────────────────────────────────────
     // DOM REFERENCES
     // ─────────────────────────────────────────────
@@ -50,6 +55,7 @@ const UI = (() => {
         bindManualInput();
         bindSynthesizeButton();
         bindExportImport();
+        bindCircleToggle();
 
         updateManualInputFields();
         updateStatus("Click on the canvas to place precision points.");
@@ -135,6 +141,17 @@ const UI = (() => {
 
         e.preventDefault();
         const [sx, sy] = getCanvasPos(e);
+
+        // Check circle handles first (only when circles exist)
+        if (constructionState) {
+            const circleHit = Animation.findCircleHandle(sx, sy);
+            if (circleHit) {
+                circleDragTarget = circleHit;
+                canvas.style.cursor = "grabbing";
+                return;
+            }
+        }
+
         const idx = findPointNear(sx, sy);
 
         if (idx >= 0) {
@@ -170,6 +187,15 @@ const UI = (() => {
             return;
         }
 
+        // Circle dragging
+        if (circleDragTarget && constructionState) {
+            handleCircleDrag(sx, sy);
+            // Show tooltip with world coordinates
+            const world = Animation.screenToWorld(sx, sy);
+            $("coordTooltip").textContent = `(${world[0].toFixed(1)}, ${world[1].toFixed(1)})`;
+            return;
+        }
+
         if (isDragging && draggingIndex >= 0) {
             const world = Animation.screenToWorld(sx, sy);
             points[draggingIndex] = world;
@@ -184,7 +210,18 @@ const UI = (() => {
             return;
         }
 
-        // Hover cursor
+        // Hover cursor — check circle handles first
+        if (constructionState) {
+            const circleHit = Animation.findCircleHandle(sx, sy);
+            if (circleHit) {
+                canvas.style.cursor = circleHit.endsWith('_center') ? 'move' : 'ew-resize';
+                hoveredPointIndex = -1;
+                const world = Animation.screenToWorld(sx, sy);
+                $("coordTooltip").textContent = `(${world[0].toFixed(1)}, ${world[1].toFixed(1)})`;
+                return;
+            }
+        }
+
         const idx = findPointNear(sx, sy);
         if (idx >= 0) {
             canvas.style.cursor = "grab";
@@ -207,11 +244,69 @@ const UI = (() => {
             isPanning = false;
             canvas.style.cursor = points.length < mode ? "crosshair" : "default";
         }
+        if (circleDragTarget) {
+            circleDragTarget = null;
+            canvas.style.cursor = points.length < mode ? "crosshair" : "default";
+        }
         if (isDragging) {
             isDragging = false;
             draggingIndex = -1;
             clearTimeout(dragSynthTimer);
             canvas.style.cursor = points.length < mode ? "crosshair" : "default";
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // CIRCLE DRAG HANDLING
+    // ─────────────────────────────────────────────
+
+    function handleCircleDrag(sx, sy) {
+        if (!circleDragTarget || !constructionState) return;
+        const world = Animation.screenToWorld(sx, sy);
+
+        const [circleKey, handleType] = circleDragTarget.split('_');
+        const circle = constructionState[circleKey]; // hr or hc
+
+        if (handleType === 'center') {
+            circle.center = world;
+        } else if (handleType === 'radius') {
+            const dx = world[0] - circle.center[0];
+            const dy = world[1] - circle.center[1];
+            const newRadius = Math.sqrt(dx * dx + dy * dy);
+            circle.radius = Math.max(newRadius, 0.01);
+        }
+
+        // Update visual immediately
+        Animation.setConstruction({ ...constructionState });
+
+        // RAF-gated re-optimization (max ~60fps)
+        if (!circleUpdatePending) {
+            circleUpdatePending = true;
+            requestAnimationFrame(() => {
+                circleUpdatePending = false;
+                performCircleUpdate();
+            });
+        }
+    }
+
+    function performCircleUpdate() {
+        if (!constructionState || points.length < 4) return;
+
+        const seedMech = currentResult ? currentResult.mechanism : null;
+        const updated = Kinematics.updateMechanismFromCircles(
+            points, constructionState, seedMech
+        );
+
+        if (updated && updated.success) {
+            currentResult = updated;
+            Animation.setMechanism(updated.mechanism, true); // keepView = true
+            Animation.setConstruction(updated.construction);
+            constructionState = updated.construction;
+            updateInfoPanel(updated);
+            updateStatus(`Circle adjusted — residual: ${updated.residual.toFixed(4)}`);
+        } else {
+            // Graceful fallback: keep last valid mechanism, show warning
+            updateStatus("⚠ Could not fit mechanism to current circles. Try smaller adjustments.");
         }
     }
 
@@ -401,13 +496,17 @@ const UI = (() => {
 
                 currentResult = result;
 
+                // Compute and set construction circles
+                constructionState = Kinematics.computeConstruction(result.mechanism);
+                Animation.setConstruction(constructionState);
+
                 // Set mechanism in animation
                 Animation.setMechanism(result.mechanism);
 
                 // Update info panel
                 updateInfoPanel(result);
 
-                updateStatus("Synthesis complete! Use controls to animate.");
+                updateStatus("Synthesis complete! Drag the hr/hc circles to explore.");
             } catch (err) {
                 showError("Synthesis error: " + err.message);
                 console.error(err);
@@ -433,10 +532,16 @@ const UI = (() => {
         $("grashofType").className = g.isGrashof ? "value grashof-yes" : "value grashof-no";
 
         $("residualError").textContent = result.residual.toFixed(6);
-        $("residualRow").style.display = mode === 5 ? "flex" : "none";
+        $("residualRow").style.display = "flex";
 
         $("groundA0").textContent = `(${m.A0[0].toFixed(2)}, ${m.A0[1].toFixed(2)})`;
         $("groundB0").textContent = `(${m.B0[0].toFixed(2)}, ${m.B0[1].toFixed(2)})`;
+
+        // Circle parameters
+        const hrEl = $("hrRadius");
+        const hcEl = $("hcRadius");
+        if (hrEl) hrEl.textContent = m.a.toFixed(3);
+        if (hcEl) hcEl.textContent = m.c.toFixed(3);
 
         // Show info panel
         $("infoPanel").classList.add("visible");
@@ -485,6 +590,15 @@ const UI = (() => {
         $("togglePoints").addEventListener("change", (e) => {
             Animation.setShowPoints(e.target.checked);
         });
+    }
+
+    function bindCircleToggle() {
+        const el = $("toggleCircles");
+        if (el) {
+            el.addEventListener("change", (e) => {
+                Animation.setShowCircles(e.target.checked);
+            });
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -595,6 +709,7 @@ const UI = (() => {
     function clearAll() {
         points = [];
         currentResult = null;
+        constructionState = null;
         Animation.clear();
         updateManualInputFields();
         updatePointsList();
@@ -610,6 +725,7 @@ const UI = (() => {
 
     function clearResult() {
         currentResult = null;
+        constructionState = null;
         Animation.clear();
         Animation.setPrecisionPoints([...points]);
         $("infoPanel").classList.remove("visible");
